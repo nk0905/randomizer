@@ -1,0 +1,105 @@
+import type { SSEEvent, SerializedState } from './types';
+
+type Subscriber = {
+  controller: ReadableStreamDefaultController<Uint8Array>;
+};
+
+const encoder = new TextEncoder();
+
+const encodeEvent = (event: SSEEvent): Uint8Array =>
+  encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+
+const fisherYatesShuffle = <T>(arr: T[]): T[] => {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
+
+const createStore = () => {
+  const users = new Map<string, { assignment: string | null }>();
+  const subscribers = new Map<string, Subscriber>();
+  let phase: 'idle' | 'assigned' = 'idle';
+
+  const broadcast = (event: SSEEvent) => {
+    const encoded = encodeEvent(event);
+    for (const [userId, sub] of subscribers) {
+      try {
+        sub.controller.enqueue(encoded);
+      } catch {
+        subscribers.delete(userId);
+      }
+    }
+  };
+
+  const broadcastExcept = (excludeId: string, event: SSEEvent) => {
+    const encoded = encodeEvent(event);
+    for (const [userId, sub] of subscribers) {
+      if (userId === excludeId) continue;
+      try {
+        sub.controller.enqueue(encoded);
+      } catch {
+        subscribers.delete(userId);
+      }
+    }
+  };
+
+  const getSerializedState = (): SerializedState => ({
+    users: Array.from(users.entries()).map(([userId, record]) => ({
+      userId,
+      assignment: record.assignment,
+    })),
+    phase,
+  });
+
+  return {
+    registerUser(
+      userId: string,
+      controller: ReadableStreamDefaultController<Uint8Array>,
+    ) {
+      const isNew = !users.has(userId);
+      users.set(userId, { assignment: users.get(userId)?.assignment ?? null });
+      subscribers.set(userId, { controller });
+
+      // Send init + current state to this subscriber
+      try {
+        controller.enqueue(encodeEvent({ type: 'init', userId }));
+        controller.enqueue(encodeEvent({ type: 'state', state: getSerializedState() }));
+      } catch {
+        // Controller may have already closed
+      }
+
+      // Notify others of the new user
+      if (isNew) {
+        broadcastExcept(userId, { type: 'user_joined', userId });
+      }
+    },
+
+    removeUser(userId: string) {
+      subscribers.delete(userId);
+      users.delete(userId);
+      broadcast({ type: 'user_left', userId });
+    },
+
+    getSerializedState,
+
+    randomizeAndBroadcast(choices: string[]) {
+      const shuffled = fisherYatesShuffle(choices);
+      const userIds = Array.from(users.keys());
+      const assignments: Record<string, string> = {};
+
+      userIds.forEach((userId, i) => {
+        const choice = shuffled[i % shuffled.length];
+        assignments[userId] = choice;
+        users.set(userId, { assignment: choice });
+      });
+
+      phase = 'assigned';
+      broadcast({ type: 'assigned', assignments });
+    },
+  };
+}
+
+export const store = createStore();
