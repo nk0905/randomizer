@@ -1,22 +1,20 @@
 'use client';
 
-import { useState } from 'react';
 import { useRandomizer } from '@/hooks/useRandomizer';
 
 const Home = () => {
-  const { users, myUserId, isConnected, isPending, start } = useRandomizer();
-  const [choices, setChoices] = useState<string[]>(['', '', '']);
+  const { users, myUserId, isConnected, isPending, choices, updateChoices, start } = useRandomizer();
 
   const addChoice = () => {
-    setChoices((prev) => [...prev, '']);
+    updateChoices([...choices, '']);
   };
 
   const removeChoice = (index: number) => {
-    setChoices((prev) => prev.filter((_, i) => i !== index));
+    updateChoices(choices.filter((_, i) => i !== index));
   };
 
   const updateChoice = (index: number, value: string) => {
-    setChoices((prev) => prev.map((c, i) => (i === index ? value : c)));
+    updateChoices(choices.map((c, i) => (i === index ? value : c)));
   };
 
   const validChoices = choices.filter((c) => c.trim() !== '');
@@ -75,7 +73,7 @@ const Home = () => {
         {/* Start Button */}
         <div className="flex justify-center">
           <button
-            onClick={() => start(validChoices)}
+            onClick={() => start()}
             disabled={!canStart}
             className="w-full max-w-xs rounded-2xl bg-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           >

@@ -22,6 +22,7 @@ const createStore = () => {
   const users = new Map<string, { assignment: string | null }>();
   const subscribers = new Map<string, Subscriber>();
   let phase: 'idle' | 'assigned' = 'idle';
+  let choices: string[] = ['', '', ''];
 
   const broadcast = (event: SSEEvent) => {
     const encoded = encodeEvent(event);
@@ -52,6 +53,7 @@ const createStore = () => {
       assignment: record.assignment,
     })),
     phase,
+    choices,
   });
 
   return {
@@ -85,8 +87,13 @@ const createStore = () => {
 
     getSerializedState,
 
-    randomizeAndBroadcast(choices: string[]) {
-      const shuffled = fisherYatesShuffle(choices);
+    updateChoices(newChoices: string[]) {
+      choices = newChoices;
+      broadcast({ type: 'choices_updated', choices });
+    },
+
+    randomizeAndBroadcast(validChoices: string[]) {
+      const shuffled = fisherYatesShuffle(validChoices);
       const userIds = Array.from(users.keys());
       const assignments: Record<string, string> = {};
 
