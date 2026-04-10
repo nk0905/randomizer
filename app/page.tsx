@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { useRandomizer } from '@/hooks/useRandomizer';
 
 const Home = () => {
-  const { users, myUserId, isConnected, isPending, choices, updateChoices, start } = useRandomizer();
+  const { users, myUserId, myUsername, isConnected, isPending, choices, setUsername, updateChoices, start } = useRandomizer();
+  const [usernameInput, setUsernameInput] = useState('');
 
   const addChoice = () => {
     updateChoices([...choices, '']);
@@ -17,6 +19,43 @@ const Home = () => {
     updateChoices(choices.map((c, i) => (i === index ? value : c)));
   };
 
+  const handleUsernameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = usernameInput.trim();
+    if (!name) return;
+    setUsername(name);
+  };
+
+  if (!myUsername) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-900 p-6">
+        <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm p-8 w-full max-w-sm space-y-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Randomizer</h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">ユーザ名を入力してください</p>
+          </div>
+          <form onSubmit={handleUsernameSubmit} className="space-y-3">
+            <input
+              type="text"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              placeholder="ユーザ名"
+              autoFocus
+              className="w-full rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="submit"
+              disabled={!isConnected || !usernameInput.trim()}
+              className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isConnected ? '始める' : '接続中...'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const validChoices = choices.filter((c) => c.trim() !== '');
   const canStart = isConnected && !isPending && validChoices.length > 0;
 
@@ -29,7 +68,7 @@ const Home = () => {
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">Randomizer</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             {isConnected ? (
-              <span className="text-green-600 dark:text-green-400">● 接続中</span>
+              <span className="text-green-600 dark:text-green-400">● 接続中 ({myUsername})</span>
             ) : (
               <span className="text-red-500">● 接続待機中...</span>
             )}
@@ -111,7 +150,8 @@ const Home = () => {
                     ].join(' ')}
                   >
                     <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono mb-2">
-                      {isMe ? '自分' : user.userId.slice(0, 8)}
+                      {user.username ?? user.userId.slice(0, 8)}
+                      {isMe && ' (自分)'}
                     </p>
                     <p
                       className={[

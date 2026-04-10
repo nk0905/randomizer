@@ -19,7 +19,7 @@ const fisherYatesShuffle = <T>(arr: T[]): T[] => {
 };
 
 const createStore = () => {
-  const users = new Map<string, { assignment: string | null }>();
+  const users = new Map<string, { assignment: string | null; username: string | null }>();
   const subscribers = new Map<string, Subscriber>();
   let phase: 'idle' | 'assigned' = 'idle';
   let choices: string[] = ['', '', ''];
@@ -50,6 +50,7 @@ const createStore = () => {
   const getSerializedState = (): SerializedState => ({
     users: Array.from(users.entries()).map(([userId, record]) => ({
       userId,
+      username: record.username,
       assignment: record.assignment,
     })),
     phase,
@@ -62,7 +63,7 @@ const createStore = () => {
       controller: ReadableStreamDefaultController<Uint8Array>,
     ) {
       const isNew = !users.has(userId);
-      users.set(userId, { assignment: users.get(userId)?.assignment ?? null });
+      users.set(userId, { assignment: users.get(userId)?.assignment ?? null, username: users.get(userId)?.username ?? null });
       subscribers.set(userId, { controller });
 
       // Send init + current state to this subscriber
@@ -75,7 +76,7 @@ const createStore = () => {
 
       // Notify others of the new user
       if (isNew) {
-        broadcastExcept(userId, { type: 'user_joined', userId });
+        broadcastExcept(userId, { type: 'user_joined', userId, username: null });
       }
     },
 
@@ -86,6 +87,13 @@ const createStore = () => {
     },
 
     getSerializedState,
+
+    setUsername(userId: string, username: string) {
+      const record = users.get(userId);
+      if (!record) return;
+      users.set(userId, { ...record, username });
+      broadcast({ type: 'username_set', userId, username });
+    },
 
     updateChoices(newChoices: string[]) {
       choices = newChoices;
@@ -100,7 +108,7 @@ const createStore = () => {
       userIds.forEach((userId, i) => {
         const choice = shuffled[i % shuffled.length];
         assignments[userId] = choice;
-        users.set(userId, { assignment: choice });
+        users.set(userId, { ...users.get(userId)!, assignment: choice });
       });
 
       phase = 'assigned';

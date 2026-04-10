@@ -17,10 +17,11 @@ type Action =
   | { type: 'disconnected' }
   | { type: 'init'; userId: string }
   | { type: 'state'; users: UserRecord[]; phase: 'idle' | 'assigned'; choices: string[] }
-  | { type: 'user_joined'; userId: string }
+  | { type: 'user_joined'; userId: string; username: string | null }
   | { type: 'user_left'; userId: string }
   | { type: 'assigned'; assignments: Record<string, string> }
   | { type: 'choices_updated'; choices: string[] }
+  | { type: 'username_set'; userId: string; username: string }
   | { type: 'pending'; value: boolean };
 
 const initialState: State = {
@@ -44,7 +45,7 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, users: action.users, phase: action.phase, choices: action.choices };
     case 'user_joined':
       if (state.users.some((u) => u.userId === action.userId)) return state;
-      return { ...state, users: [...state.users, { userId: action.userId, assignment: null }] };
+      return { ...state, users: [...state.users, { userId: action.userId, username: action.username, assignment: null }] };
     case 'user_left':
       return { ...state, users: state.users.filter((u) => u.userId !== action.userId) };
     case 'assigned': {
@@ -56,6 +57,12 @@ const reducer = (state: State, action: Action): State => {
     }
     case 'choices_updated':
       return { ...state, choices: action.choices };
+    case 'username_set': {
+      const users = state.users.map((u) =>
+        u.userId === action.userId ? { ...u, username: action.username } : u,
+      );
+      return { ...state, users };
+    }
     case 'pending':
       return { ...state, isPending: action.value };
     default:
@@ -80,14 +87,23 @@ export const useRandomizer = () => {
       try {
         const parsed = JSON.parse(event.data) as SSEEvent;
         switch (parsed.type) {
-          case 'init':
+          case 'init': {
             dispatch({ type: 'init', userId: parsed.userId });
+            const savedUsername = localStorage.getItem('randomizer_username');
+            if (savedUsername) {
+              fetch('/api/username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: savedUsername }),
+              });
+            }
             break;
+          }
           case 'state':
             dispatch({ type: 'state', users: parsed.state.users, phase: parsed.state.phase, choices: parsed.state.choices });
             break;
           case 'user_joined':
-            dispatch({ type: 'user_joined', userId: parsed.userId });
+            dispatch({ type: 'user_joined', userId: parsed.userId, username: parsed.username });
             break;
           case 'user_left':
             dispatch({ type: 'user_left', userId: parsed.userId });
@@ -97,6 +113,9 @@ export const useRandomizer = () => {
             break;
           case 'choices_updated':
             dispatch({ type: 'choices_updated', choices: parsed.choices });
+            break;
+          case 'username_set':
+            dispatch({ type: 'username_set', userId: parsed.userId, username: parsed.username });
             break;
         }
       } catch {
@@ -112,6 +131,15 @@ export const useRandomizer = () => {
       es.close();
       esRef.current = null;
     };
+  }, []);
+
+  const setUsername = useCallback(async (username: string) => {
+    localStorage.setItem('randomizer_username', username);
+    await fetch('/api/username', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
   }, []);
 
   const updateChoices = useCallback((newChoices: string[]) => {
@@ -139,5 +167,7 @@ export const useRandomizer = () => {
     }
   }, [state.choices]);
 
-  return { ...state, updateChoices, start };
+  const myUsername = state.users.find((u) => u.userId === state.myUserId)?.username ?? null;
+
+  return { ...state, myUsername, setUsername, updateChoices, start };
 }
