@@ -4,22 +4,22 @@ import { useState } from 'react';
 import { useRandomizer } from '@/hooks/useRandomizer';
 
 const Home = () => {
-  const { users, myUserId, myUsername, isConnected, isPending, choices, setUsername, updateChoices, start } = useRandomizer();
+  const { users, myUserId, myUsername, isConnected, isPending, choices, choicesConfirmed, isHost, localChoices, setUsername, updateChoices, confirmChoices, start } = useRandomizer();
   const [usernameInput, setUsernameInput] = useState('');
 
   const addChoice = () => {
-    updateChoices([...choices, '']);
+    updateChoices([...localChoices, '']);
   };
 
   const removeChoice = (index: number) => {
-    updateChoices(choices.filter((_, i) => i !== index));
+    updateChoices(localChoices.filter((_, i) => i !== index));
   };
 
   const updateChoice = (index: number, value: string) => {
-    updateChoices(choices.map((c, i) => (i === index ? value : c)));
+    updateChoices(localChoices.map((c, i) => (i === index ? value : c)));
   };
 
-  const handleUsernameSubmit = (e: React.FormEvent) => {
+  const handleUsernameSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault();
     const name = usernameInput.trim();
     if (!name) return;
@@ -45,10 +45,10 @@ const Home = () => {
             />
             <button
               type="submit"
-              disabled={!isConnected || !usernameInput.trim()}
+              disabled={!myUserId || !usernameInput.trim()}
               className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {isConnected ? '始める' : '接続中...'}
+              {myUserId ? '始める' : '接続中...'}
             </button>
           </form>
         </div>
@@ -56,8 +56,9 @@ const Home = () => {
     );
   }
 
-  const validChoices = choices.filter((c) => c.trim() !== '');
-  const canStart = isConnected && !isPending && validChoices.length > 0;
+  const validLocalChoices = localChoices.filter((c) => c.trim() !== '');
+  const canConfirm = isHost && isConnected && !isPending && validLocalChoices.length > 0;
+  const canStart = isConnected && !isPending && choicesConfirmed;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 p-6">
@@ -68,7 +69,9 @@ const Home = () => {
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">Randomizer</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             {isConnected ? (
-              <span className="text-green-600 dark:text-green-400">● 接続中 ({myUsername})</span>
+              <span className="text-green-600 dark:text-green-400">
+                ● 接続中 ({myUsername}{isHost ? ' · ホスト' : ''})
+              </span>
             ) : (
               <span className="text-red-500">● 接続待機中...</span>
             )}
@@ -77,36 +80,71 @@ const Home = () => {
 
         {/* Choice Editor */}
         <section className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-4">
-            選択肢
-          </h2>
-          <ul className="space-y-2">
-            {choices.map((choice, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={choice}
-                  onChange={(e) => updateChoice(i, e.target.value)}
-                  placeholder={`選択肢 ${i + 1}`}
-                  className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+              選択肢
+            </h2>
+            {choicesConfirmed && (
+              <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950 rounded-full px-2 py-0.5">
+                確定済み
+              </span>
+            )}
+          </div>
+
+          {isHost ? (
+            <>
+              <ul className="space-y-2">
+                {localChoices.map((choice, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={choice}
+                      onChange={(e) => updateChoice(i, e.target.value)}
+                      placeholder={`選択肢 ${i + 1}`}
+                      className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={() => removeChoice(i)}
+                      disabled={localChoices.length <= 1}
+                      className="text-zinc-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-lg leading-none px-1"
+                      aria-label="削除"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex items-center justify-between">
                 <button
-                  onClick={() => removeChoice(i)}
-                  disabled={choices.length <= 1}
-                  className="text-zinc-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-lg leading-none px-1"
-                  aria-label="削除"
+                  onClick={addChoice}
+                  className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
                 >
-                  ×
+                  <span className="text-lg leading-none">+</span> 選択肢を追加
                 </button>
-              </li>
-            ))}
-          </ul>
-          <button
-            onClick={addChoice}
-            className="mt-3 flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span> 選択肢を追加
-          </button>
+                <button
+                  onClick={() => confirmChoices(localChoices)}
+                  disabled={!canConfirm}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  選択肢を確定する
+                </button>
+              </div>
+            </>
+          ) : (
+            <ul className="space-y-2">
+              {(choicesConfirmed ? choices : []).length === 0 ? (
+                <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                  ホストが選択肢を確定するまでお待ちください
+                </p>
+              ) : (
+                (choicesConfirmed ? choices : []).map((choice, i) => (
+                  <li key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-700 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100">
+                    {choice}
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
         </section>
 
         {/* Start Button */}
@@ -124,8 +162,10 @@ const Home = () => {
                 </svg>
                 処理中...
               </span>
-            ) : (
+            ) : choicesConfirmed ? (
               'ランダムに決定！'
+            ) : (
+              '選択肢を確定してください'
             )}
           </button>
         </div>

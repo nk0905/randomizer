@@ -18,11 +18,16 @@ const fisherYatesShuffle = <T>(arr: T[]): T[] => {
   return result;
 };
 
+const RECONNECT_GRACE_MS = 5000;
+
 const createStore = () => {
   const users = new Map<string, { assignment: string | null; username: string | null }>();
   const subscribers = new Map<string, Subscriber>();
+  const pendingRemovals = new Map<string, ReturnType<typeof setTimeout>>();
   let phase: 'idle' | 'assigned' = 'idle';
   let choices: string[] = ['', '', ''];
+  let hostId: string | null = null;
+  let choicesConfirmed = false;
 
   const broadcast = (event: SSEEvent) => {
     const encoded = encodeEvent(event);
@@ -55,6 +60,8 @@ const createStore = () => {
     })),
     phase,
     choices,
+    hostId,
+    choicesConfirmed,
   });
 
   return {
@@ -62,11 +69,21 @@ const createStore = () => {
       userId: string,
       controller: ReadableStreamDefaultController<Uint8Array>,
     ) {
+      // 再接続の場合は削除タイマーをキャンセル
+      const pending = pendingRemovals.get(userId);
+      if (pending) {
+        clearTimeout(pending);
+        pendingRemovals.delete(userId);
+      }
+
       const isNew = !users.has(userId);
       users.set(userId, { assignment: users.get(userId)?.assignment ?? null, username: users.get(userId)?.username ?? null });
       subscribers.set(userId, { controller });
 
-      // Send init + current state to this subscriber
+      if (isNew && hostId === null) {
+        hostId = userId;
+      }
+
       try {
         controller.enqueue(encodeEvent({ type: 'init', userId }));
         controller.enqueue(encodeEvent({ type: 'state', state: getSerializedState() }));
@@ -74,7 +91,6 @@ const createStore = () => {
         // Controller may have already closed
       }
 
-      // Notify others of the new user
       if (isNew) {
         broadcastExcept(userId, { type: 'user_joined', userId, username: null });
       }
@@ -82,8 +98,20 @@ const createStore = () => {
 
     removeUser(userId: string) {
       subscribers.delete(userId);
-      users.delete(userId);
-      broadcast({ type: 'user_left', userId });
+
+      // 猶予期間内に再接続した場合はユーザーデータを維持する
+      const timer = setTimeout(() => {
+        pendingRemovals.delete(userId);
+        users.delete(userId);
+        broadcast({ type: 'user_left', userId });
+
+        if (hostId === userId) {
+          hostId = users.keys().next().value ?? null;
+          broadcast({ type: 'host_changed', hostId });
+        }
+      }, RECONNECT_GRACE_MS);
+
+      pendingRemovals.set(userId, timer);
     },
 
     getSerializedState,
@@ -95,9 +123,12 @@ const createStore = () => {
       broadcast({ type: 'username_set', userId, username });
     },
 
-    updateChoices(newChoices: string[]) {
+    confirmChoices(userId: string, newChoices: string[]): boolean {
+      if (userId !== hostId) return false;
       choices = newChoices;
-      broadcast({ type: 'choices_updated', choices });
+      choicesConfirmed = true;
+      broadcast({ type: 'choices_confirmed', choices });
+      return true;
     },
 
     randomizeAndBroadcast(validChoices: string[]) {
