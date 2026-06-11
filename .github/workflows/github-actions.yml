@@ -19,8 +19,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm approve-builds --all
-
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --allow-build=sharp,unrs-resolver
 
       - run: pnpm build
